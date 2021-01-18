@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+
 	"github.com/gbolo/muggle-oidc/util"
 
 	"github.com/spf13/viper"
@@ -39,6 +40,7 @@ func GenerateAuthURL(state, redirectURL string) (authUrl string) {
 
 type tokenResponse struct {
 	AccessToken string `json:"access_token"`
+	IdToken     string `json:"id_token"`
 }
 
 func AccessTokenRequest(code, redirectURL string) (accessToken string, err error) {
@@ -64,7 +66,6 @@ func AccessTokenRequest(code, redirectURL string) (accessToken string, err error
 		params.Set("client_assertion", createAssertionJWT())
 	}
 
-
 	headers := map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
 	}
@@ -80,12 +81,27 @@ func AccessTokenRequest(code, redirectURL string) (accessToken string, err error
 		return
 	}
 
-	// parse the access token
+	// parse the token response
 	var tr tokenResponse
 	err = json.Unmarshal(resp.BodyBytes, &tr)
-	if err == nil {
-		accessToken = tr.AccessToken
+	if err != nil {
+		return
 	}
+
+	// validate the ID token if it exists (log warning if it doesnt for now)
+	if tr.IdToken != "" {
+		err = validateProviderJWT(tr.IdToken)
+		if err == nil {
+			log.Info("id_token was successfully validated")
+		} else {
+			log.Errorf("id_token could not be validated: %v", err)
+			log.Debugf("bad id_token: %s", tr.IdToken)
+		}
+	} else {
+		log.Warning("token response did not contain an id_token")
+	}
+
+	accessToken = tr.AccessToken
 	return
 }
 

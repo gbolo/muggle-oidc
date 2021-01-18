@@ -4,8 +4,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
-	"github.com/gbolo/muggle-oidc/util"
 	"time"
+
+	"github.com/gbolo/muggle-oidc/util"
 
 	"github.com/lestrrat-go/jwx/jwa"
 	"github.com/lestrrat-go/jwx/jwk"
@@ -15,15 +16,14 @@ import (
 )
 
 var (
-	codeVerifier      *cv.CodeVerifier
-	signingKeySet     jwk.Set
-	pubKeySet         jwk.Set
+	// used for code challenges pkce
+	codeVerifier *cv.CodeVerifier
+	// these are our signing key(s). The pubKeySet is what we share in our jwks endpoint
+	signingKeySet jwk.Set
+	pubKeySet     jwk.Set
+	// used to validate provider jwt (id_token)
 	providerPubKeySet jwk.Set
 )
-
-type jwksJson struct {
-	Keys []jwk.Key `json:"keys"`
-}
 
 func initJwtSigningKey() {
 	// lets generate a bunch of RSA keys so that we can randomly pick one during signing
@@ -44,15 +44,6 @@ func initJwtSigningKey() {
 		key.Set(jwk.AlgorithmKey, jwa.RS256)
 		log.Debugf("added generated RSA private key with kid %s to our jwks", keyID)
 		signingKeySet.Add(key)
-		//signingKeySet.Keys = append(signingKeySet.Keys, key)
-
-		// TODO: we need the pub portion of the keys stored in another jwk.Set for now
-		// https://github.com/lestrrat-go/jwx/issues/293
-		//pubKey, _ := jwk.New(rsaKey.Public())
-		//pubKey.Set(jwk.KeyIDKey, keyID)
-		//pubKey.Set(jwk.KeyUsageKey, jwk.ForSignature)
-		//pubKey.Set(jwk.AlgorithmKey, jwa.RS256)
-		//pubKeySet.Keys = append(pubKeySet.Keys, pubKey)
 	}
 
 	// init public jwks
@@ -122,4 +113,10 @@ func signJWT(token *jwt.Token) string {
 		log.Fatalf("cannot sign token with our key: %v", err)
 	}
 	return string(signedJwt)
+}
+
+func validateProviderJWT(token string) (err error) {
+	// validates a token claims and signature
+	_, err = jwt.ParseString(token, jwt.WithValidate(true), jwt.WithKeySet(providerPubKeySet))
+	return
 }

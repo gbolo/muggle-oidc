@@ -5,8 +5,9 @@ import (
 	"crypto/tls"
 	"io/ioutil"
 	"net/http"
-	"github.com/gbolo/muggle-oidc/util"
 	"time"
+
+	"github.com/gbolo/muggle-oidc/util"
 )
 
 var httpclient *http.Client

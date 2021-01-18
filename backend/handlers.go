@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
 	"github.com/gbolo/muggle-oidc/oidc"
 
 	"github.com/spf13/viper"
