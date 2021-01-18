@@ -44,6 +44,13 @@ func pollDiscovery() (err error) {
 		return
 	}
 
+	// log a message about or intended use of pkce
+	if discoveryCache.PkceSupported() {
+		log.Debugf("code challenge (pkce) is supported by provider, will use method: %s", discoveryCache.PkceCodeChallengeMethod())
+	} else {
+		log.Warningf("code challenge (pkce) is NOT supported by this provider")
+	}
+
 	err = loadProviderJwks()
 	return
 }
