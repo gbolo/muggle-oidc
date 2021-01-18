@@ -79,14 +79,17 @@ func createRequestJWT(state, nonce, redirectURL string) (jwtString string) {
 	token.Set(jwt.AudienceKey, discoveryCache.Issuer)
 	token.Set(jwt.IssuerKey, viper.GetString("oidc.client_id"))
 	token.Set(jwt.IssuedAtKey, time.Now().Unix())
-	token.Set("code_challenge_method", "S256")
-	token.Set("code_challenge", codeVerifier.CodeChallengeS256())
 	token.Set("scope", viper.GetString("oidc.scope"))
 	token.Set("response_type", "code")
 	token.Set("redirect_uri", redirectURL)
 	token.Set("state", state)
 	token.Set("ui_locales", "en-CA")
 	token.Set("nonce", nonce)
+	// pkce code challenge if supported
+	if discoveryCache.PkceSupported() {
+		token.Set("code_challenge_method", discoveryCache.PkceCodeChallengeMethod())
+		token.Set("code_challenge", discoveryCache.PkceCodeChallenge())
+	}
 
 	return signJWT(&token)
 }

@@ -25,8 +25,10 @@ func GenerateAuthURL(state, redirectURL string) (authUrl string) {
 	params.Set("nonce", nonce)
 	params.Set("redirect_uri", redirectURL)
 	// pkce: https://www.oauth.com/oauth2-servers/pkce/authorization-request/
-	params.Set("code_challenge", codeVerifier.CodeChallengeS256())
-	params.Set("code_challenge_method", "S256")
+	if discoveryCache.PkceSupported() {
+		params.Set("code_challenge", discoveryCache.PkceCodeChallenge())
+		params.Set("code_challenge_method", discoveryCache.PkceCodeChallengeMethod())
+	}
 	// request param: https://openid.net/specs/openid-connect-core-1_0.html#JWTRequests
 	// details of the object: https://openid.net/specs/openid-connect-core-1_0.html#RequestObject
 	// It represents the request as a JWT whose Claims are the request parameters above
@@ -52,9 +54,10 @@ func AccessTokenRequest(code, redirectURL string) (accessToken string, err error
 	params.Set("code", code)
 	params.Set("client_id", viper.GetString("oidc.client_id"))
 
-	// TODO: figure out if we can check that the provider supports this
 	// https://www.oauth.com/oauth2-servers/pkce/authorization-request/
-	params.Set("code_verifier", codeVerifier.String())
+	if discoveryCache.PkceSupported() {
+		params.Set("code_verifier", discoveryCache.PkceCodeVerifier())
+	}
 
 	// TODO: we need to decide when to use client secret or jwt
 	if viper.GetString("oidc.client_secret") != "" {
