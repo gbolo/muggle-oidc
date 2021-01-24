@@ -4,14 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gbolo/muggle-oidc/oidc"
-
+	"github.com/gbolo/muggle-oidc/util"
 	"github.com/spf13/viper"
 )
 
 // for now, we dont worry about sessions. use the same state always
 var defaultState = "D2FjBT2M2tqs5CFF"
+
+const sessionCookieName = "muggleOIDC_SESSION_ID"
 
 func handlerLanding(w http.ResponseWriter, req *http.Request) {
 	htmlText := fmt.Sprintf(
@@ -50,8 +53,32 @@ func handlerJwks(w http.ResponseWriter, req *http.Request) {
 // @Success 302
 // @Router /v1/auth [get]
 func handlerAuthRedirect(w http.ResponseWriter, req *http.Request) {
+	// check if we have a session ID
+	sessionID := ""
+	sessionCookie, _ := req.Cookie(sessionCookieName)
+	if sessionCookie == nil {
+		// create a new session ID and set it as a cookie
+		sessionID = util.GenerateRandomString(16)
+		http.SetCookie(w, &http.Cookie{
+			Name:     sessionCookieName,
+			Value:    sessionID,
+			Path:     "/",
+			Secure:   true,
+			HttpOnly: false,
+			Expires:  time.Now().Add(time.Hour * 1),
+			SameSite: http.SameSiteNoneMode,
+		})
+	} else {
+		sessionID = sessionCookie.Value
+	}
+
+	// create a new state value and store it for future validation
+	state := util.GenerateRandomString(32)
+	oidc.StateStore.AddState(sessionID, state)
+
+	// generate then return auth URL as a redirect
 	callbackURL := fmt.Sprintf("%s%s", viper.GetString("external_self_baseurl"), callbackPath)
-	http.Redirect(w, req, oidc.GenerateAuthURL(defaultState, callbackURL), http.StatusFound)
+	http.Redirect(w, req, oidc.GenerateAuthURL(state, callbackURL), http.StatusFound)
 }
 
 // @Summary Callback handler
@@ -61,9 +88,14 @@ func handlerAuthRedirect(w http.ResponseWriter, req *http.Request) {
 // @Success 200
 // @Router /v1/callback [get]
 func handlerCallback(w http.ResponseWriter, req *http.Request) {
-	// check that we have the expected state
-	if defaultState != req.FormValue("state") {
-		log.Errorf("callback state did not match expected state: %s", req.FormValue("state"))
+	// check that we have the expected state for this browser
+	sessionCookie, _ := req.Cookie(sessionCookieName)
+	if sessionCookie == nil {
+		writeJSONResponse(w, http.StatusBadRequest, errorResponse{"your request did not contain an expected session cookie"})
+		return
+	}
+	if !oidc.StateStore.ValidateState(sessionCookie.Value, req.FormValue("state")) {
+		log.Errorf("could not validate the state provided: %s", req.FormValue("state"))
 		writeJSONResponse(w, http.StatusBadRequest, errorResponse{"provided state did not match expected state"})
 		return
 	}
