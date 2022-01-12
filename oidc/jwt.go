@@ -1,11 +1,12 @@
 package oidc
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
 	"encoding/json"
+	"io/ioutil"
+	"strings"
 	"time"
 
+	"github.com/gbolo/muggle-oidc/crypto"
 	"github.com/gbolo/muggle-oidc/util"
 
 	"github.com/lestrrat-go/jwx/jwa"
@@ -25,25 +26,103 @@ var (
 	providerPubKeySet jwk.Set
 )
 
-func initJwtSigningKey() {
-	// lets generate a bunch of RSA keys so that we can randomly pick one during signing
+func generatePrivateJWKS(count int, keyType string) (signingKeySet jwk.Set) {
 	signingKeySet = jwk.NewSet()
-	pubKeySet = jwk.NewSet()
-	for i := 1; i <= 2; i++ {
-		rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
-		if err != nil {
-			log.Fatalf("failed to generate new RSA private key: %s", err)
+	switch strings.ToUpper(keyType) {
+	case "RSA":
+		n := 0
+		for n < count {
+			n++
+			keyRSA, err := crypto.GenerateRSAKey(2048)
+			if err != nil {
+				log.Fatalf("failed to generate RSA key: %v", err)
+			}
+			key, err := jwk.New(keyRSA)
+			if err != nil {
+				log.Fatalf("failed to create jwk key: %s", err)
+			}
+			keyID, _ := util.GenerateRandomString(12)
+			key.Set(jwk.KeyIDKey, keyID)
+			key.Set(jwk.KeyUsageKey, jwk.ForSignature)
+			key.Set(jwk.AlgorithmKey, jwa.RS256)
+			log.Debugf("added generated RSA private key with kid %s to our jwks", keyID)
+			signingKeySet.Add(key)
 		}
-		key, err := jwk.New(rsaKey)
-		if err != nil {
-			log.Fatalf("failed to create jwk key: %s", err)
+	case "EC":
+		n := 0
+		for n < count {
+			n++
+			keyEC, err := crypto.GenerateECKey("P-256")
+			if err != nil {
+				log.Fatalf("failed to generate EC key: %v", err)
+			}
+			key, err := jwk.New(keyEC)
+			if err != nil {
+				log.Fatalf("failed to create jwk key: %s", err)
+			}
+			keyID, _ := util.GenerateRandomString(12)
+			key.Set(jwk.KeyIDKey, keyID)
+			key.Set(jwk.KeyUsageKey, jwk.ForSignature)
+			key.Set(jwk.AlgorithmKey, jwa.ES256)
+			log.Debugf("added generated EC private key with kid %s to our jwks", keyID)
+			signingKeySet.Add(key)
 		}
-		keyID := util.GenerateRandomString(12)
-		key.Set(jwk.KeyIDKey, keyID)
-		key.Set(jwk.KeyUsageKey, jwk.ForSignature)
-		key.Set(jwk.AlgorithmKey, jwa.RS256)
-		log.Debugf("added generated RSA private key with kid %s to our jwks", keyID)
-		signingKeySet.Add(key)
+	default:
+		log.Fatalf("unsupported key type specified: %s", keyType)
+	}
+
+	return
+}
+
+func loadPrivateKeyFromDisk(path, keyID, keyAlg string) (signingKeySet jwk.Set) {
+	signingKeySet = jwk.NewSet()
+	log.Infof("reading in static signing key pem from disk: %v", path)
+	keyBytes, err := ioutil.ReadFile(path)
+	if err != nil {
+		log.Fatalf("could not load static jwt signing key: %v", err)
+	}
+	keyFromDisk, err := crypto.ParsePrivateKeyPEM(keyBytes)
+	if err != nil {
+		log.Fatalf("could not parse key file: %v", err)
+	}
+	key, err := jwk.New(keyFromDisk)
+	if err != nil {
+		log.Fatalf("failed to create jwk key: %s", err)
+	}
+	// create a random keyID if one wasn't specified
+	if keyID == "" {
+		keyID, _ = util.GenerateRandomString(12)
+	}
+
+	// validate that the signature algorithm is valid
+	var sigAlg jwa.SignatureAlgorithm
+	if err = sigAlg.Accept(keyAlg); err != nil {
+		log.Fatalf("invalid key algorithm specified %s: %v", keyAlg, err)
+	}
+
+	key.Set(jwk.KeyIDKey, keyID)
+	key.Set(jwk.KeyUsageKey, jwk.ForSignature)
+	key.Set(jwk.AlgorithmKey, sigAlg)
+	log.Debugf("added private key with kid %s to our jwks with alg %s", keyID, sigAlg.String())
+	signingKeySet.Add(key)
+
+	return
+}
+
+func initJwtSigningKey() {
+
+	// private keys are either generated or read from disk
+	if viper.GetBool("jwt.signing_key.generate.enabled") {
+		keyCount := viper.GetInt("jwt.signing_key.generate.count")
+		if keyCount < 1 {
+			log.Fatalf("jwt.signing_key.generate.count is less than 1")
+		}
+		keyType := viper.GetString("jwt.signing_key.generate.key_type")
+		signingKeySet = generatePrivateJWKS(keyCount, keyType)
+	} else {
+		keyFile := viper.GetString("jwt.signing_key.static.path")
+		keyAlg := viper.GetString("jwt.signing_key.static.alg")
+		signingKeySet = loadPrivateKeyFromDisk(keyFile, viper.GetString("jwt.signing_key.static.id"), keyAlg)
 	}
 
 	// init public jwks
@@ -104,18 +183,29 @@ func createAssertionJWT() (jwtString string) {
 	token.Set(jwt.IssuerKey, viper.GetString("oidc.client_id"))
 	token.Set(jwt.IssuedAtKey, time.Now().Unix())
 	token.Set(jwt.ExpirationKey, time.Now().Add(time.Minute*10).Unix())
-	token.Set(jwt.JwtIDKey, util.GenerateRandomString(16))
+	jwtID, _ := util.GenerateRandomString(16)
+	token.Set(jwt.JwtIDKey, jwtID)
 
 	return signJWT(&token)
 }
 
 func signJWT(token *jwt.Token) string {
 	// sign our token. If we cant sign it's fatal cause something terribly wrong...
-	signedJwt, err := jwt.Sign(*token, jwa.RS256, getSigningKey())
+	signingKey := getSigningKey()
+	signatureAlg, err := getSignatureAlgorithm(signingKey.Algorithm())
+	if err != nil {
+		log.Fatalf("could not determine which signature algorithm to use: %v", err)
+	}
+	signedJwt, err := jwt.Sign(*token, signatureAlg, signingKey)
 	if err != nil {
 		log.Fatalf("cannot sign token with our key: %v", err)
 	}
 	return string(signedJwt)
+}
+
+func getSignatureAlgorithm(name string) (alg jwa.SignatureAlgorithm, err error) {
+	err = alg.Accept(name)
+	return
 }
 
 func validateProviderJWT(token string) (err error) {

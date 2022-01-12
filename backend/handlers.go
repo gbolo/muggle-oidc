@@ -58,7 +58,7 @@ func handlerAuthRedirect(w http.ResponseWriter, req *http.Request) {
 	sessionCookie, _ := req.Cookie(sessionCookieName)
 	if sessionCookie == nil {
 		// create a new session ID and set it as a cookie
-		sessionID = util.GenerateRandomString(16)
+		sessionID, _ = util.GenerateRandomString(16)
 		http.SetCookie(w, &http.Cookie{
 			Name:     sessionCookieName,
 			Value:    sessionID,
@@ -73,7 +73,7 @@ func handlerAuthRedirect(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// create a new state value and store it for future validation
-	state := util.GenerateRandomString(32)
+	state, _ := util.GenerateRandomString(32)
 	oidc.StateStore.AddState(sessionID, state)
 
 	// generate then return auth URL as a redirect
@@ -88,24 +88,32 @@ func handlerAuthRedirect(w http.ResponseWriter, req *http.Request) {
 // @Success 200
 // @Router /v1/callback [get]
 func handlerCallback(w http.ResponseWriter, req *http.Request) {
+	// check if the callback contained any errors in query
+	if len(req.FormValue("error")) > 0 {
+		errorMessage := fmt.Sprintf("error %s: %s", req.FormValue("error"), req.FormValue("error_description"))
+		log.Error(errorMessage)
+		writeJSONResponse(w, http.StatusBadRequest, errorResponse{errorMessage})
+		return
+	}
+
 	// check that we have the expected state for this browser
 	sessionCookie, _ := req.Cookie(sessionCookieName)
 	if sessionCookie == nil {
-		writeJSONResponse(w, http.StatusBadRequest, errorResponse{"your request did not contain an expected session cookie"})
-		return
+		log.Warningf("session cookie is missing. We cannot validate the session state")
+		//writeJSONResponse(w, http.StatusBadRequest, errorResponse{"your request did not contain an expected session cookie"})
+		//return
 	}
-	if !oidc.StateStore.ValidateState(sessionCookie.Value, req.FormValue("state")) {
-		log.Errorf("could not validate the state provided: %s", req.FormValue("state"))
-		writeJSONResponse(w, http.StatusBadRequest, errorResponse{"provided state did not match expected state"})
-		return
+	if sessionCookie != nil && !oidc.StateStore.ValidateState(sessionCookie.Value, req.FormValue("state")) {
+		log.Errorf("could not validate the cookie session state provided: %s", req.FormValue("state"))
+		//writeJSONResponse(w, http.StatusBadRequest, errorResponse{"provided state did not match expected state"})
+		//return
 	}
-	log.Debugf("callback state matched expected state")
 
 	// check that the user request includes a code
 	code := req.FormValue("code")
 	if code == "" {
 		log.Errorf("code is missing from callback request")
-		writeJSONResponse(w, http.StatusBadRequest, errorResponse{"did not provide a code"})
+		writeJSONResponse(w, http.StatusBadRequest, errorResponse{"invalid callback request: did not provide a code"})
 		return
 	}
 

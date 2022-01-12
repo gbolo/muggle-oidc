@@ -3,9 +3,8 @@ package oidc
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
-
 	"github.com/gbolo/muggle-oidc/util"
+	"net/url"
 
 	"github.com/spf13/viper"
 )
@@ -15,7 +14,7 @@ import (
 // Defined here: https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
 func GenerateAuthURL(state, redirectURL string) (authUrl string) {
 	base, _ := url.Parse(discoveryCache.AuthEndpoint)
-	nonce := util.GenerateRandomString(8)
+	nonce, _ := util.GenerateRandomString(8)
 	// construct query params
 	params := url.Values{}
 	params.Set("response_type", "code")

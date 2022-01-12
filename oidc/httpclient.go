@@ -31,7 +31,7 @@ type httpResponse struct {
 }
 
 func doHttpCall(method, reqUrl string, headers map[string]string, bodyBytes []byte) (resp httpResponse) {
-	traceId := util.GenerateRandomString(6)
+	traceId, _ := util.GenerateRandomString(6)
 	req, _ := http.NewRequest(method, reqUrl, bytes.NewBuffer(bodyBytes))
 	if len(headers) > 0 {
 		for header, value := range headers {

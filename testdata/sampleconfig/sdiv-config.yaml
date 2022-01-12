@@ -34,6 +34,28 @@ server:
 external_self_baseurl: https://<some_reachable_hostname>
 
 #
+# JWT Signing keys
+#
+jwt:
+
+  signing_key:
+
+    # settings related to generating signing keys
+    generate:
+      # if set to true, then we will generate our own keys at application launch
+      enabled: true
+
+      # specify the number of keys to generate
+      count: 3
+
+      # used when generating our own keys at application launch
+      # https://datatracker.ietf.org/doc/html/rfc7518#section-3.1
+      # supported values: RSA, ECDSA
+      ## Note that when using RSA we will generate a 4k bit key and use RS256 alg
+      ## Note that when using EC we will generate a P-256 curve key and use ES256 alg
+      key_type: RSA
+
+#
 # OIDC client settings
 #
 oidc:

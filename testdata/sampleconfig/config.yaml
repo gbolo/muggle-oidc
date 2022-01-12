@@ -38,12 +38,39 @@ external_self_baseurl: https://<some_reachable_hostname>
 #
 jwt:
 
-  # NOTE: if these values are omitted, then rsa keys are generated on startup
+  signing_key:
 
-  # kid (KEY ID) used to identify the signing key
-  #kid: signingkey
-  # MUST be an RSA key, eg: openssl genrsa -out ./testdata/jwt/rsa-4096.pem 4096
-  #signing_key: ./testdata/jwt/rsa-4096.pem
+    # settings related to generating signing keys
+    generate:
+      # if set to true, then we will generate our own keys at application launch
+      enabled: false
+
+      # specify the number of keys to generate
+      count: 3
+
+      # used when generating our own keys at application launch
+      # https://datatracker.ietf.org/doc/html/rfc7518#section-3.1
+      # supported values: RSA, ECDSA
+      ## Note that when using RSA we will generate a 4k bit key and use RS256 alg
+      ## Note that when using EC we will generate a P-256 curve key and use ES256 alg
+      key_type: RSA
+
+    # settings related to using a pre-generated key on disk
+    # ** WILL BE IGNORED if generated is enabled **
+    static:
+
+      # path must lead to a single key in pem format
+      # we support RSA,EC both pkcs1 and pkcs8 formats
+      path: ./testdata/jwt/rsa-4096.pem
+
+      # signature algorithm to use when signing with this key
+      # REQUIRED when using static
+      # https://datatracker.ietf.org/doc/html/rfc7518#section-3.1
+      alg: RS256
+
+      # optionally give this Key an ID
+      # if omitted, the ID will be randomly generated
+      id: static
 
 
 #

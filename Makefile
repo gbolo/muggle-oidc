@@ -2,7 +2,7 @@
 
 APPNAME     = oidc-client
 REGISTRY   ?= docker.securekey.com/internal/hosting
-PACKAGE     = $(APPNAME)
+PACKAGE     = github.com/gbolo/muggle-oidc
 METAPKG     = $(PACKAGE)/backend
 DATE       ?= $(shell date +%FT%T%z)
 VERSION     = 0.1
