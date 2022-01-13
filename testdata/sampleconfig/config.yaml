@@ -43,7 +43,7 @@ jwt:
     # settings related to generating signing keys
     generate:
       # if set to true, then we will generate our own keys at application launch
-      enabled: false
+      enabled: true
 
       # specify the number of keys to generate
       count: 3

@@ -35,6 +35,8 @@ func initViper(cfgFile string) {
 	viper.SetDefault("server.bind_address", "127.0.0.1")
 	viper.SetDefault("server.bind_port", "8080")
 	viper.SetDefault("server.access_log", true)
+	viper.SetDefault("jwt.signing_key.generate.count", 1)
+	viper.SetDefault("jwt.signing_key.generate.key_type", "RSA")
 
 	// Configuring and pulling overrides from environmental variables
 	viper.SetEnvPrefix(EnvConfigPrefix)
@@ -82,6 +84,10 @@ func printConfigSummary() {
 		"external_self_baseurl",
 		"oidc.client_id",
 		"oidc.discovery_url",
+		"jwt.signing_key.generate.enabled",
+		"jwt.signing_key.generate.key_type",
+		"jwt.signing_key.static.path",
+		"jwt.signing_key.static.alg",
 	} {
 		log.Debugf("%s: %s\n", c, viper.GetString(c))
 	}
@@ -94,9 +100,30 @@ func sanityChecks() {
 		"oidc.client_id",
 		"oidc.discovery_url",
 	}
+
+	// generate and static keys are mutually exclusive options
+	if viper.GetBool("jwt.signing_key.generate.enabled") {
+		validateKeyType("jwt.signing_key.generate.key_type")
+	} else {
+		keysThatCannotBeEmpty = append(
+			keysThatCannotBeEmpty,
+			"jwt.signing_key.static.path",
+			"jwt.signing_key.static.alg",
+		)
+	}
+
 	for _, key := range keysThatCannotBeEmpty {
 		if viper.GetString(key) == "" {
 			log.Fatalf("%s cannot be empty", key)
 		}
+	}
+}
+
+func validateKeyType(viperKey string) {
+	switch strings.ToUpper(viper.GetString(viperKey)) {
+	case "RSA", "EC":
+		break
+	default:
+		log.Fatalf("invalid value for %s", viperKey)
 	}
 }

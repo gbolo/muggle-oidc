@@ -3,8 +3,9 @@ package oidc
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gbolo/muggle-oidc/util"
 	"net/url"
+
+	"github.com/gbolo/muggle-oidc/util"
 
 	"github.com/spf13/viper"
 )
